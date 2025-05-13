@@ -1,0 +1,1 @@
+!pip install gradio pandas numpy sentence-transformers

@@ -1,0 +1,50 @@
+import pandas as pd
+import numpy as np
+import gradio as gr
+from sentence_transformers import SentenceTransformer, util
+
+# Load sentence transformer model
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Load uploaded data (only works after file is uploaded)
+def load_data(file_path):
+    df = pd.read_csv("/content/cleaned_financial_advice.csv")
+    df = df.dropna(subset=["Advice"])
+
+    if 'Topic' not in df.columns or 'Advice' not in df.columns:
+        raise ValueError("CSV must contain 'Topic' and 'Advice' columns.")
+    return df
+def build_chatbot(df):
+    advice_embeddings = model.encode(df['Advice'].tolist(), convert_to_tensor=True)
+
+    def get_advice(query):
+        query_embedding = model.encode(query, convert_to_tensor=True)
+        similarities = util.cos_sim(query_embedding, advice_embeddings)[0]
+        best_idx = int(np.argmax(similarities))
+        topic = df.iloc[best_idx]['Topic']
+        advice = df.iloc[best_idx]['Advice']
+        return f"*Topic:* {topic}\n\n*Advice:* {advice}"
+
+    return get_advice
+# Gradio interface
+def create_interface():
+    def load_and_answer(query, file):
+        df = load_data(file.name)
+        chatbot = build_chatbot(df)
+        return chatbot(query)
+
+    interface = gr.Interface(
+        fn=load_and_answer,
+        inputs=[
+            gr.Textbox(lines=2, placeholder="Ask a financial question..."),
+            gr.File(label="Upload financial advice CSV", type="filepath")
+        ],
+
+        outputs=gr.Markdown(),
+        title="AI Financial Advisor",
+        description="Upload your financial advice CSV (with 'Topic' and 'Advice' columns) and ask financial questions."
+    )
+    return interface
+
+app = create_interface()
+app.launch(share=True)  # Use share=True for Colab
